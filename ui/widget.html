@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuotaTank Widget</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="widget.css" />
+</head>
+<body class="widget-body">
+  <div class="w-root pywebview-drag-region" id="wRoot" title="Sürükleyerek taşı · çift tıkla paneli aç">
+    <header class="w-head">
+      <div class="w-brand">
+        <img class="w-logo" src="../assets/quotatank.png" alt="" draggable="false" />
+        <span>QuotaTank</span>
+        <span class="w-sync mono" id="wSync">--:--</span>
+      </div>
+      <div class="w-actions">
+        <button id="wPass" class="w-btn" type="button" title="Tıklamalar içinden geçsin (aç / kapat)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 3l6.5 16 2.2-6.3L20 10.5z" stroke-linejoin="round"/><path d="M14 14l5 5" stroke-linecap="round"/></svg>
+        </button>
+        <button id="wRefresh" class="w-btn" type="button" title="Yenile">
+          <svg class="spin-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 12a9 9 0 1 1-2.64-6.36" stroke-linecap="round"/><path d="M21 3v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="wExpand" class="w-btn" type="button" title="Paneli aç">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="wHide" class="w-btn" type="button" title="Arka plana al (sistem tepsisinde çalışmaya devam eder)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 17h12" stroke-linecap="round"/></svg>
+        </button>
+        <button id="wQuit" class="w-btn" type="button" title="Uygulamayı kapat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </header>
+    <main class="w-grid" id="wGrid"></main>
+  </div>
+
+  <!-- Resize grips: edges + corners (outside the drag region so they never move the window) -->
+  <div class="rz rz-n" data-edge="n"></div>
+  <div class="rz rz-s" data-edge="s"></div>
+  <div class="rz rz-e" data-edge="e"></div>
+  <div class="rz rz-w" data-edge="w"></div>
+  <div class="rz rz-c rz-nw" data-edge="nw" title="Boyutlandır"></div>
+  <div class="rz rz-c rz-ne" data-edge="ne" title="Boyutlandır"></div>
+  <div class="rz rz-c rz-sw" data-edge="sw" title="Boyutlandır"></div>
+  <div class="rz rz-c rz-se" data-edge="se" title="Boyutlandır"></div>
+
+  <script src="liquid.js"></script>
+  <script src="common.js"></script>
+  <script src="widget.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Generated on each machine by install_hooks.py (contain local paths)
+collector/agy-statusline.cmd
+collector/claude-statusline.cmd
+
+# Temporary files
+*.tmp
+
+# Local design drafts / source image (the app uses assets/)
+quotatank_ai_cli_kullan_m_monit_r.html
+Code_Generated_Image.ico

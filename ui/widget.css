@@ -1,0 +1,216 @@
+/* Compact always-on-top widget (frameless window). Builds on styles.css themes. */
+
+html, body.widget-body {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #0b0e15;
+  background-image: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.w-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0 10px 10px;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(217, 119, 87, 0.07), transparent 55%),
+    radial-gradient(circle at 90% 0%, rgba(56, 189, 248, 0.07), transparent 55%),
+    #0b0e15;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  cursor: grab;
+}
+.w-root:active { cursor: grabbing; }
+
+/* ------------------------------------------------------------ header */
+
+.w-head {
+  flex: none;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.w-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--text-strong);
+  letter-spacing: 0.01em;
+}
+.w-logo { width: 16px; height: 16px; display: block; user-select: none; pointer-events: none; }
+.w-sync { font-size: 10px; font-weight: 400; color: var(--text-dim); }
+
+.w-actions { display: flex; gap: 2px; opacity: 0.55; transition: opacity 0.2s; }
+.w-root:hover .w-actions { opacity: 1; }
+.w-btn {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.w-btn svg { width: 13px; height: 13px; }
+.w-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-strong); }
+#wQuit:hover { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
+
+/* ------------------------------------------------------------ columns */
+
+.w-grid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+}
+.w-empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.tank-card.w-col {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 6px 7px;
+  border-radius: 10px;
+  gap: 5px;
+  background: rgba(18, 22, 34, 0.7);
+}
+.tank-card.w-col.low { border-color: rgba(239, 68, 68, 0.35); }
+
+.w-col .tank-vessel {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  max-width: none;
+  border-radius: 14px;
+  border-width: 1px;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.75), var(--vessel-glow);
+}
+.w-col .glare { top: 8px; bottom: 8px; left: 7px; width: 7px; }
+
+.w-level {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 24;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  pointer-events: none;
+}
+.w-none { color: var(--text-dim); font-size: 16px; }
+.w-crit {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(127, 29, 29, 0.85);
+  border: 1px solid rgba(248, 113, 113, 0.6);
+  color: #fecaca;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.w-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.w-name > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.w-icon { display: grid; place-items: center; color: var(--accent); flex: none; }
+.w-icon svg { width: 12px; height: 12px; display: block; }
+
+.w-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.w-short { color: var(--accent-badge-text); font-weight: 600; }
+.w-short.crit { color: var(--crit); }
+.w-short.dim { color: var(--text-dim); font-weight: 400; }
+.w-reset { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; }
+
+/* ------------------------------------------------------------ resize grips */
+
+.rz { position: fixed; z-index: 100; }
+.rz-n { top: 0; left: 14px; right: 14px; height: 5px; cursor: ns-resize; }
+.rz-s { bottom: 0; left: 14px; right: 14px; height: 5px; cursor: ns-resize; }
+.rz-e { right: 0; top: 14px; bottom: 14px; width: 5px; cursor: ew-resize; }
+.rz-w { left: 0; top: 14px; bottom: 14px; width: 5px; cursor: ew-resize; }
+.rz-c { width: 14px; height: 14px; }
+.rz-nw { top: 0; left: 0; cursor: nwse-resize; }
+.rz-se { bottom: 0; right: 0; cursor: nwse-resize; }
+.rz-ne { top: 0; right: 0; cursor: nesw-resize; }
+.rz-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+
+/* small corner marks, shown on hover so the grips are discoverable */
+.rz-c::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border: 0 solid rgba(255, 255, 255, 0.35);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.rz-nw::after { top: 3px; left: 3px; border-top-width: 2px; border-left-width: 2px; border-top-left-radius: 4px; }
+.rz-ne::after { top: 3px; right: 3px; border-top-width: 2px; border-right-width: 2px; border-top-right-radius: 4px; }
+.rz-sw::after { bottom: 3px; left: 3px; border-bottom-width: 2px; border-left-width: 2px; border-bottom-left-radius: 4px; }
+.rz-se::after { bottom: 3px; right: 3px; border-bottom-width: 2px; border-right-width: 2px; border-bottom-right-radius: 4px; }
+body:hover .rz-c::after { opacity: 1; }
+.rz-c:hover::after, body.resizing .rz-c::after { border-color: rgba(196, 181, 253, 0.9); }
+body.resizing, body.resizing * { cursor: inherit; }
+
+/* ------------------------------------------------------------ scale text with column width */
+
+.tank-card.w-col { container-type: inline-size; }
+.w-level { font-size: clamp(11px, 12cqi, 20px); }
+.w-name { font-size: clamp(11px, 12.5cqi, 16px); }
+.w-icon svg { width: clamp(12px, 13cqi, 17px); height: clamp(12px, 13cqi, 17px); }
+.w-meta { font-size: clamp(10px, 10.5cqi, 13px); flex-wrap: wrap; justify-content: center; column-gap: 6px; }
+
+/* Recommended tool right now / will run out before renewal */
+.tank-card.w-col { position: relative; }
+.w-best {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 3;
+  font-size: 12px;
+  line-height: 1;
+  color: #fde047;
+  text-shadow: 0 0 6px rgba(253, 224, 71, 0.6);
+  pointer-events: none;
+}
+.tank-card.w-col.runs-out { border-color: rgba(245, 158, 11, 0.4); }
+
+/* Pass-through toggle: lit while clicks go through the widget */
+#wPass.on { background: rgba(56, 189, 248, 0.22); color: #7dd3fc; }
+#wPass.on:hover { background: rgba(56, 189, 248, 0.32); }
+.w-root.passing .w-actions { opacity: 1; }
