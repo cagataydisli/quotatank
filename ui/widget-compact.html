@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuotaTank Kompakt Widget</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="widget-compact.css" />
+</head>
+<body class="cq-body">
+  <!-- Measured by widget-compact.js: the window takes exactly this element's size. -->
+  <div class="cq-root pywebview-drag-region" id="cqRoot">
+    <div class="cq-pop hidden" id="cqPop" role="dialog" aria-live="polite"></div>
+
+    <div class="cq-bar" id="cqBar" title="Sürükleyerek taşı · çift tıkla paneli aç">
+      <div class="cq-grip" aria-hidden="true">
+        <svg class="cq-dots" viewBox="0 0 16 16" fill="currentColor">
+          <circle cx="5" cy="4" r="1.2"/><circle cx="11" cy="4" r="1.2"/>
+          <circle cx="5" cy="8" r="1.2"/><circle cx="11" cy="8" r="1.2"/>
+          <circle cx="5" cy="12" r="1.2"/><circle cx="11" cy="12" r="1.2"/>
+        </svg>
+        <div class="cq-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+            <rect x="4" y="4" width="4" height="16" rx="2" stroke="#D97757"/>
+            <rect x="10" y="4" width="4" height="16" rx="2" stroke="#E5E7EB"/>
+            <rect x="16" y="4" width="4" height="16" rx="2" stroke="#38BDF8"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="cq-mods" id="cqMods"></div>
+
+      <div class="cq-actions">
+        <button id="cqPass" class="cq-btn" type="button" title="Tıklamalar içinden geçsin (aç / kapat)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 3l6.5 16 2.2-6.3L20 10.5z" stroke-linejoin="round"/><path d="M14 14l5 5" stroke-linecap="round"/></svg>
+        </button>
+        <button id="cqRefresh" class="cq-btn" type="button" title="Yenile">
+          <svg class="spin-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M21 12a9 9 0 1 1-2.64-6.36" stroke-linecap="round"/><path d="M21 3v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="cqExpand" class="cq-btn" type="button" title="Paneli aç">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="cqHide" class="cq-btn" type="button" title="Arka plana al (sistem tepsisinde çalışmaya devam eder)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M6 17h12" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="widget-compact.js"></script>
+</body>
+</html>

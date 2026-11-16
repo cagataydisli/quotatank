@@ -76,6 +76,10 @@ class TrayController:
         on_quit: Callable[[], None],
         on_toggle_click_through: Callable[[], None] | None = None,
         is_click_through: Callable[[], bool] | None = None,
+        on_toggle_compact: Callable[[], None] | None = None,
+        is_compact: Callable[[], bool] | None = None,
+        on_toggle_dock: Callable[[], None] | None = None,
+        is_docked: Callable[[], bool] | None = None,
     ) -> None:
         self._on_toggle = on_toggle_window
         self._on_widget = on_show_widget
@@ -83,6 +87,10 @@ class TrayController:
         self._on_quit = on_quit
         self._on_click_through = on_toggle_click_through
         self._is_click_through = is_click_through or (lambda: False)
+        self._on_compact = on_toggle_compact
+        self._is_compact = is_compact or (lambda: False)
+        self._on_dock = on_toggle_dock
+        self._is_docked = is_docked or (lambda: False)
         self._icon: pystray.Icon | None = None
         self._thread: threading.Thread | None = None
         self._look: tuple | None = None
@@ -101,6 +109,22 @@ class TrayController:
                     "Widget tıklamaları geçirsin",
                     lambda _icon, _item: self._on_click_through(),
                     checked=lambda _item: self._is_click_through(),
+                )
+            )
+        if self._on_compact is not None:
+            items.append(
+                pystray.MenuItem(
+                    "Kompakt widget (yatay şerit)",
+                    lambda _icon, _item: self._on_compact(),
+                    checked=lambda _item: self._is_compact(),
+                )
+            )
+        if self._on_dock is not None:
+            items.append(
+                pystray.MenuItem(
+                    "Görev çubuğuna yerleştir",
+                    lambda _icon, _item: self._on_dock(),
+                    checked=lambda _item: self._is_docked(),
                 )
             )
         items += [pystray.Menu.SEPARATOR, pystray.MenuItem("Çıkış", lambda _icon, _item: self._on_quit())]

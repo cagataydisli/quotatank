@@ -224,3 +224,248 @@ def cursor_in_client_rect(hwnd: int, rect: tuple[float, float, float, float] | N
     left = win[0] + (x - pad) * s
     top = win[1] + (y - pad) * s
     return left <= pt.x <= left + (w + 2 * pad) * s and top <= pt.y <= top + (h + 2 * pad) * s
+
+
+# ---------------------------------------------------------------- taskbar docking
+#
+# The compact widget can sit *on* the taskbar. It is not re-parented into Explorer
+# (a cross-process child window shares its input queue with Explorer and freezes
+# with it); it is a topmost tool window placed over the taskbar instead, and kept
+# above it when the taskbar raises itself.
+
+HWND_TOPMOST = -1
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+GW_HWNDPREV = 3
+DWMWCP_DONOTROUND = 1
+ABM_GETSTATE = 0x4
+ABS_AUTOHIDE = 0x1
+
+user32.FindWindowW.restype = wintypes.HWND
+user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+user32.FindWindowExW.restype = wintypes.HWND
+user32.FindWindowExW.argtypes = [wintypes.HWND, wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR]
+user32.GetWindow.restype = wintypes.HWND
+user32.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
+user32.GetForegroundWindow.restype = wintypes.HWND
+user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+user32.IsWindowVisible.argtypes = [wintypes.HWND]
+user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+
+
+class APPBARDATA(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("hWnd", wintypes.HWND),
+        ("uCallbackMessage", wintypes.UINT),
+        ("uEdge", wintypes.UINT),
+        ("rc", wintypes.RECT),
+        ("lParam", wintypes.LPARAM),
+    ]
+
+
+def _class_name(hwnd: int) -> str:
+    buf = ctypes.create_unicode_buffer(64)
+    user32.GetClassNameW(wintypes.HWND(hwnd), buf, 64)
+    return buf.value
+
+
+def _monitor_of(hwnd: int):
+    return user32.MonitorFromWindow(wintypes.HWND(hwnd), MONITOR_DEFAULTTONEAREST)
+
+
+def monitor_rect(hwnd: int) -> tuple[int, int, int, int] | None:
+    info = MONITORINFO()
+    info.cbSize = ctypes.sizeof(MONITORINFO)
+    mon = _monitor_of(hwnd)
+    if not mon or not user32.GetMonitorInfoW(mon, ctypes.byref(info)):
+        return None
+    r = info.rcMonitor
+    return r.left, r.top, r.right, r.bottom
+
+
+def taskbars() -> list[int]:
+    """Primary taskbar first, then the taskbars of the other monitors."""
+    out: list[int] = []
+    primary = user32.FindWindowW("Shell_TrayWnd", None)
+    if primary:
+        out.append(int(primary))
+    h = None
+    while True:
+        h = user32.FindWindowExW(None, h, "Shell_SecondaryTrayWnd", None)
+        if not h:
+            break
+        out.append(int(h))
+    return out
+
+
+def taskbar_for(hwnd: int | None) -> int | None:
+    """The taskbar on the monitor holding ``hwnd`` (or the primary one)."""
+    bars = taskbars()
+    if not bars:
+        return None
+    if hwnd:
+        mon = _monitor_of(hwnd)
+        for tb in bars:
+            if _monitor_of(tb) == mon:
+                return tb
+    return bars[0]
+
+
+def taskbar_autohide() -> bool:
+    abd = APPBARDATA()
+    abd.cbSize = ctypes.sizeof(APPBARDATA)
+    try:
+        return bool(ctypes.windll.shell32.SHAppBarMessage(ABM_GETSTATE, ctypes.byref(abd)) & ABS_AUTOHIDE)
+    except Exception:
+        return False
+
+
+def tray_area_left(taskbar: int) -> int | None:
+    """Left edge of the notification area (clock, tray icons) on the primary taskbar."""
+    child = user32.FindWindowExW(wintypes.HWND(taskbar), None, "TrayNotifyWnd", None)
+    if not child:
+        return None
+    r = window_rect(int(child))
+    return r[0] if r and r[2] > r[0] else None
+
+
+def set_rect(hwnd: int, x: int, y: int, w: int, h: int) -> None:
+    """Move + resize in physical px."""
+    user32.SetWindowPos(wintypes.HWND(hwnd), None, int(x), int(y), int(w), int(h), SWP_NOZORDER | SWP_NOACTIVATE)
+
+
+def is_covered_by(hwnd: int, other: int, limit: int = 400) -> bool:
+    """True if ``other`` is above ``hwnd`` in the z-order."""
+    h = user32.GetWindow(wintypes.HWND(hwnd), GW_HWNDPREV)
+    while h and limit > 0:
+        if int(h) == other:
+            return True
+        h = user32.GetWindow(h, GW_HWNDPREV)
+        limit -= 1
+    return False
+
+
+def raise_topmost(hwnd: int) -> None:
+    user32.SetWindowPos(
+        wintypes.HWND(hwnd), wintypes.HWND(HWND_TOPMOST), 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+    )
+
+
+def fullscreen_foreground(mon: tuple[int, int, int, int]) -> bool:
+    """A game / video / presentation covers the whole monitor (taskbar included)."""
+    fg = user32.GetForegroundWindow()
+    if not fg:
+        return False
+    if _class_name(int(fg)) in ("Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"):
+        return False
+    r = window_rect(int(fg))
+    if r is None:
+        return False
+    return r[0] <= mon[0] and r[1] <= mon[1] and r[2] >= mon[2] and r[3] >= mon[3]
+
+
+DWMWA_BORDER_COLOR = 34
+DWMWA_COLOR_NONE = 0xFFFFFFFE
+DWMWA_COLOR_DEFAULT = 0xFFFFFFFF
+
+
+def set_square_corners(hwnd: int, square: bool) -> None:
+    """Docked look: square corners and no Windows 11 window outline (or back to normal)."""
+    pref = ctypes.c_int(DWMWCP_DONOTROUND if square else DWMWCP_ROUND)
+    border = wintypes.DWORD(DWMWA_COLOR_NONE if square else DWMWA_COLOR_DEFAULT)
+    try:
+        dwmapi.DwmSetWindowAttribute(
+            wintypes.HWND(hwnd), DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(pref), ctypes.sizeof(pref)
+        )
+        dwmapi.DwmSetWindowAttribute(
+            wintypes.HWND(hwnd), DWMWA_BORDER_COLOR, ctypes.byref(border), ctypes.sizeof(border)
+        )
+    except Exception:
+        pass
+
+
+def is_visible(hwnd: int) -> bool:
+    return bool(user32.IsWindowVisible(wintypes.HWND(hwnd)))
+
+
+def show_no_activate(hwnd: int, show: bool) -> None:
+    user32.ShowWindow(wintypes.HWND(hwnd), 4 if show else 0)  # SW_SHOWNOACTIVATE / SW_HIDE
+
+
+def scale_of(hwnd: int) -> float:
+    return _scale(hwnd)
+
+
+gdi32 = ctypes.WinDLL("gdi32")
+user32.GetDC.restype = wintypes.HDC
+user32.GetDC.argtypes = [wintypes.HWND]
+user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+gdi32.CreateCompatibleDC.restype = wintypes.HDC
+gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
+gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+gdi32.SelectObject.restype = wintypes.HGDIOBJ
+gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+gdi32.BitBlt.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                         wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.DWORD]
+gdi32.GetDIBits.argtypes = [wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT,
+                            ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT]
+gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+gdi32.DeleteDC.argtypes = [wintypes.HDC]
+SRCCOPY = 0x00CC0020
+
+
+def _screen_row(x: int, y: int, width: int) -> bytes | None:
+    """One row of screen pixels as BGRA bytes (GDI, well under a millisecond)."""
+    screen = user32.GetDC(None)
+    if not screen:
+        return None
+    mem = gdi32.CreateCompatibleDC(screen)
+    bmp = gdi32.CreateCompatibleBitmap(screen, width, 1)
+    old = gdi32.SelectObject(mem, bmp)
+    try:
+        if not gdi32.BitBlt(mem, 0, 0, width, 1, screen, x, y, SRCCOPY):
+            return None
+        # BITMAPINFOHEADER: 32-bit, top-down, uncompressed
+        header = (ctypes.c_uint32 * 10)()
+        header[0] = 40
+        header[1] = width
+        header[2] = ctypes.c_uint32(-1).value
+        header[3] = 1 | (32 << 16)
+        buf = ctypes.create_string_buffer(width * 4)
+        gdi32.SelectObject(mem, old)
+        if not gdi32.GetDIBits(mem, bmp, 0, 1, buf, ctypes.byref(header), 0):
+            return None
+        return buf.raw
+    finally:
+        gdi32.SelectObject(mem, old)
+        gdi32.DeleteObject(bmp)
+        gdi32.DeleteDC(mem)
+        user32.ReleaseDC(None, screen)
+
+
+def taskbar_color(tb_rect: tuple[int, int, int, int], skip: tuple[int, int] | None = None) -> str | None:
+    """Dominant colour of the taskbar (one pixel row near its bottom), as "#rrggbb".
+
+    With transparency effects it follows the wallpaper, so the docked bar samples it
+    instead of guessing. ``skip`` is an x range to ignore (the bar itself).
+    """
+    left, top, right, bottom = tb_rect
+    width = right - left
+    if width <= 0:
+        return None
+    raw = _screen_row(left, bottom - 3, width)
+    if not raw:
+        return None
+    counts: dict[bytes, int] = {}
+    for i in range(0, width, 2):
+        if skip and skip[0] <= left + i < skip[1]:
+            continue
+        px = raw[i * 4:i * 4 + 3]
+        counts[px] = counts.get(px, 0) + 1
+    if not counts:
+        return None
+    b, g, r = max(counts, key=counts.get)
+    return f"#{r:02x}{g:02x}{b:02x}"

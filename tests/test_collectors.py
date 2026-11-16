@@ -318,6 +318,11 @@ class TestHotkeyAndConfig(unittest.TestCase):
         self.assertEqual(cfg["system"]["start_mode"], "widget")
         self.assertEqual(cfg["system"]["hotkey"], "ctrl+alt+w")
 
+    def test_widget_style_normalized(self) -> None:
+        self.assertEqual(config.normalize_config({})["widget"]["style"], "tank")
+        self.assertEqual(config.normalize_config({"widget": {"style": "compact"}})["widget"]["style"], "compact")
+        self.assertEqual(config.normalize_config({"widget": {"style": "bogus"}})["widget"]["style"], "tank")
+
 
 if __name__ == "__main__":
     unittest.main()

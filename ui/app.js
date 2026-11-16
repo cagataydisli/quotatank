@@ -695,6 +695,20 @@
 
   function buildWidgetSection(widget) {
     const { block, body } = settingsBlock("Küçük Pencere (Widget)", "Sağ alttaki kompakt görünüm", "settings-widget");
+    body.appendChild(
+      selectRow("Widget tasarımı", "Tanklar: dikey sıvı tankları · Kompakt: tek satırlık yatay şerit", "widget.style", widget.style || "tank", [
+        ["tank", "Tanklar (dikey)"],
+        ["compact", "Kompakt şerit (yatay)"],
+      ])
+    );
+    body.appendChild(
+      switchRow(
+        "Görev çubuğuna yerleştir",
+        "Yalnızca kompakt şeritte: görev çubuğu kalınlığına iner, saatin soluna oturur, görev çubuğu boyunca sağa sola kaydırılabilir. Tam ekran uygulamalarda gizlenir.",
+        "widget.dock",
+        !!widget.dock
+      )
+    );
     body.appendChild(rangeRow("Saydamlık", "Düşük değer = arkası daha çok görünür", "widget.opacity", widget.opacity, 30, 100));
     body.appendChild(
       switchRow(

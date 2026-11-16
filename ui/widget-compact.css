@@ -1,0 +1,365 @@
+/* Compact horizontal widget: one bar with a mini tank per tool, detail card on click.
+   The window is sized to .cq-root by widget-compact.js, so nothing here may depend on
+   the viewport size. Builds on styles.css (colours, fonts, reset). */
+
+html, body.cq-body {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #0d1017;
+  background-image: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Window outline: drawn on the viewport, so it always matches the window edge. */
+body.cq-body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.cq-root {
+  position: absolute;
+  left: 0;
+  bottom: 0;          /* the window grows upwards when the card opens */
+  width: max-content;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 10% 100%, rgba(217, 119, 87, 0.08), transparent 55%),
+    radial-gradient(circle at 90% 100%, rgba(56, 189, 248, 0.08), transparent 55%),
+    #0d1017;
+  cursor: grab;
+}
+.cq-root:active { cursor: grabbing; }
+
+/* ------------------------------------------------------------ bar */
+
+.cq-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px 7px 10px;
+}
+
+.cq-grip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 8px;
+  margin-right: 1px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+.cq-dots { width: 12px; height: 12px; color: var(--text-dim); flex: none; }
+.cq-logo {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex: none;
+}
+.cq-logo svg { width: 14px; height: 14px; }
+
+.cq-mods { display: flex; align-items: center; gap: 6px; }
+.cq-empty { padding: 0 10px; font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+/* ------------------------------------------------------------ tool module */
+
+.cq-mod[data-id="claude"], .cq-pop[data-id="claude"] {
+  --accent: #fb923c;
+  --weekly-grad: linear-gradient(180deg, #d97757 0%, #9a3412 100%);
+  --slice-grad: linear-gradient(180deg, #ffb088 0%, #f58b5c 100%);
+  --divider: #ffd4be;
+  --glow: 0 0 10px rgba(217, 119, 87, 0.45);
+  --hover-border: rgba(249, 115, 22, 0.4);
+  --active-border: rgba(249, 115, 22, 0.5);
+  --active-bg: rgba(249, 115, 22, 0.1);
+}
+.cq-mod[data-id="codex"], .cq-pop[data-id="codex"] {
+  --accent: #e4e4e7;
+  --weekly-grad: linear-gradient(180deg, #6b7280 0%, #27272a 100%);
+  --slice-grad: linear-gradient(180deg, #ffffff 0%, #d4d4d8 100%);
+  --divider: #ffffff;
+  --glow: 0 0 10px rgba(255, 255, 255, 0.25);
+  --hover-border: rgba(161, 161, 170, 0.4);
+  --active-border: rgba(212, 212, 216, 0.5);
+  --active-bg: rgba(228, 228, 231, 0.1);
+}
+.cq-mod[data-id="antigravity"], .cq-pop[data-id="antigravity"] {
+  --accent: #38bdf8;
+  --weekly-grad: linear-gradient(180deg, #2563eb 0%, #0f172a 100%);
+  --slice-grad: linear-gradient(180deg, #7dd3fc 0%, #38bdf8 100%);
+  --divider: #bae6fd;
+  --glow: 0 0 10px rgba(56, 189, 248, 0.45);
+  --hover-border: rgba(56, 189, 248, 0.4);
+  --active-border: rgba(56, 189, 248, 0.5);
+  --active-bg: rgba(14, 165, 233, 0.1);
+}
+
+.cq-mod {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.cq-mod:hover { background: rgba(255, 255, 255, 0.07); border-color: var(--hover-border); }
+.cq-mod.active { border-color: var(--active-border); background: var(--active-bg); }
+.cq-mod.err { opacity: 0.75; }
+
+/* mini glass tube: weekly liquid, with this 5h window's spendable share on top */
+.cq-tube {
+  position: relative;
+  width: 16px;
+  height: 36px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.8), var(--glow);
+  overflow: hidden;
+  flex: none;
+}
+.cq-glare {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 2px;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.05));
+  z-index: 3;
+  pointer-events: none;
+}
+.cq-liquid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 2;
+  transition: height 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cq-liquid.filled::before {   /* liquid surface */
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.65);
+  opacity: 0.8;
+  z-index: 1;
+}
+.cq-root.anim .cq-liquid.filled::before { animation: cqShimmer 2.4s ease-in-out infinite; }
+@keyframes cqShimmer {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.cq-slice {
+  flex: none;
+  height: 0;
+  background: var(--slice-grad);
+  transition: height 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cq-slice.on { border-bottom: 1px dashed var(--divider); }
+.cq-weekly { flex: 1; background: var(--weekly-grad); }
+.cq-tube-none {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  font-size: 10px;
+  z-index: 3;
+}
+
+.cq-txt { min-width: 72px; line-height: 1.2; }
+.cq-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+}
+.cq-flags { display: flex; align-items: center; gap: 3px; }
+.cq-dot { width: 6px; height: 6px; border-radius: 50%; }
+.cq-dot.low { background: #f87171; }
+.cq-dot.soon { background: #f59e0b; }
+.cq-star { font-size: 10px; line-height: 1; color: #fde047; text-shadow: 0 0 6px rgba(253, 224, 71, 0.6); }
+
+.cq-nums {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.cq-short { color: var(--accent); font-weight: 600; }
+.cq-short.crit { color: var(--crit); }
+.cq-short.dim { color: var(--text-dim); font-weight: 400; }
+
+/* ------------------------------------------------------------ action buttons (2 × 2) */
+
+.cq-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 18px);
+  grid-auto-rows: 18px;
+  gap: 1px;
+  padding-left: 7px;
+  margin-left: 1px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  opacity: 0.55;
+  transition: opacity 0.2s;
+}
+.cq-root:hover .cq-actions, .cq-root.passing .cq-actions { opacity: 1; }
+.cq-btn {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.cq-btn svg { width: 11px; height: 11px; }
+.cq-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-strong); }
+#cqPass.on { background: rgba(56, 189, 248, 0.22); color: #7dd3fc; }
+#cqPass.on:hover { background: rgba(56, 189, 248, 0.32); }
+.cq-btn.spinning .spin-target { animation: cqSpin 0.9s linear infinite; }
+@keyframes cqSpin { to { transform: rotate(360deg); } }
+
+/* ------------------------------------------------------------ detail card */
+
+.cq-pop {
+  width: 0;
+  min-width: 100%;      /* exactly as wide as the bar, never wider */
+  padding: 11px 12px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: default;
+}
+.cq-pop.hidden { display: none; }
+
+.cq-pop-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 9px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.cq-pop-title { font-size: 12px; font-weight: 650; color: var(--text-strong); }
+.cq-pop-sub { font-size: 10px; color: var(--text-muted); font-family: var(--mono); }
+.cq-x {
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.cq-x:hover { background: rgba(255, 255, 255, 0.1); color: var(--text-strong); }
+
+.cq-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 9px; }
+.cq-stat {
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  min-width: 0;
+}
+.cq-stat-lbl { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+.cq-stat-val { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--text-strong); }
+.cq-stat-val.accent { color: var(--accent); }
+.cq-stat-val.crit { color: var(--crit); }
+.cq-stat-sub { font-size: 10px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.cq-pop-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.cq-notes { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: var(--text-muted); min-width: 0; }
+.cq-notes strong { color: var(--text); font-weight: 600; }
+.cq-note.good { color: #6ee7b7; }
+.cq-note.bad { color: #fbbf24; }
+.cq-note.err { color: var(--crit); }
+.cq-open {
+  flex: none;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.cq-open:hover { background: rgba(255, 255, 255, 0.16); }
+
+/* ------------------------------------------------------------ docked on the taskbar
+   body.docked: as thick as the taskbar (--dock-h), flush and borderless so it reads
+   as part of it. Only the detail card above keeps the floating look. */
+
+body.cq-body.docked { background: var(--dock-bg, #1c1c1c); }
+body.cq-body.docked::after { display: none; }
+.docked .cq-root { background: transparent; cursor: ew-resize; }
+.docked .cq-root:active { cursor: ew-resize; }
+.docked .cq-bar {
+  height: var(--dock-h, 48px);
+  gap: 4px;
+  padding: 0 6px 0 4px;
+}
+.docked .cq-grip { padding-right: 4px; gap: 0; border-right: 0; }
+.docked .cq-logo { display: none; }
+.docked .cq-dots { width: 10px; height: 10px; opacity: 0.7; }
+.docked .cq-mods { gap: 2px; }
+.docked .cq-mod {
+  height: calc(var(--dock-h, 48px) - 8px);
+  gap: 6px;
+  padding: 0 7px 0 6px;
+  border-radius: 6px;
+  background: transparent;
+}
+.docked .cq-mod:hover { background: rgba(255, 255, 255, 0.07); }
+.docked .cq-mod.active { background: var(--active-bg); }
+.docked .cq-tube {
+  width: 12px;
+  height: min(32px, calc(var(--dock-h, 48px) - 16px));
+  border-radius: 4px;
+}
+.docked .cq-glare { left: 2px; width: 2px; }
+.docked .cq-txt { min-width: 64px; }
+.docked .cq-actions {
+  grid-template-columns: repeat(2, 17px);
+  grid-auto-rows: min(17px, calc((var(--dock-h, 48px) - 10px) / 2));
+  padding-left: 5px;
+  border-left-color: rgba(255, 255, 255, 0.08);
+}
+.docked .cq-pop {
+  background: #0d1017;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-bottom: 0;
+}

@@ -14,7 +14,7 @@
 ## Neler yapar?
 
 - **Tek bakışta kota:** Her aracın haftalık kotası bir tank, içindeki parlak katman ise bu 5 saatlik dönemde harcayabileceğin kısım.
-- **Küçük pencere (widget):** Sağ altta her zaman üstte duran kompakt görünüm. Boyutu köşesinden çekilerek ayarlanır, yeri hatırlanır, saydam yapılabilir, istenirse tıklamalar içinden geçer.
+- **Küçük pencere (widget):** Sağ altta her zaman üstte duran kompakt görünüm. Boyutu köşesinden çekilerek ayarlanır, yeri hatırlanır, saydam yapılabilir, istenirse tıklamalar içinden geçer. İki tasarım var: dikey **tanklar** ya da tek satırlık yatay **kompakt şerit** (araca tıklayınca detay kartı açılır). Ayarlar → Küçük Pencere'den ya da tepsi menüsünden seçilir. Kompakt şerit istenirse **görev çubuğuna yerleştirilir**: görev çubuğu kalınlığına iner, rengini alır, saatin soluna oturur, yatay kaydırılabilir ve tam ekran uygulamalarda gizlenir.
 - **Bildirimler:** Bir kota azalınca (varsayılan %20 ve %10) ve azalmış bir kota yenilenince Windows bildirimi.
 - **"Ne zaman biter?" tahmini:** Şimdiki kullanım hızıyla kotanın yenilenmeden önce bitip bitmeyeceği.
 - **"Şimdi hangi aracı kullanayım?" önerisi:** En çok hakkı kalan aracı gösterir.

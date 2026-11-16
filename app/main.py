@@ -32,6 +32,7 @@ import install_hooks
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 UI_INDEX = PROJECT_ROOT / "ui" / "index.html"
 UI_WIDGET = PROJECT_ROOT / "ui" / "widget.html"
+UI_WIDGET_COMPACT = PROJECT_ROOT / "ui" / "widget-compact.html"
 APP_ICON = PROJECT_ROOT / "assets" / "quotatank.ico"
 # Own taskbar identity: windows are grouped under QuotaTank with its icon, not under Python.
 APP_USER_MODEL_ID = "QuotaTank.Monitor"
@@ -59,6 +60,16 @@ WIDGET_H = 232
 WIDGET_MIN_COL_W, WIDGET_MAX_COL_W = 74, 320
 WIDGET_MIN_H, WIDGET_MAX_H = 170, 900
 WIDGET_MIN_W = 258   # header (brand + clock + 5 buttons) needs this much
+# Horizontal "compact" design: the page measures itself and asks for its exact size;
+# these are only the first guess and the sanity limits.
+COMPACT_H = 60
+COMPACT_BASE_W, COMPACT_COL_W = 116, 125
+COMPACT_MIN, COMPACT_MAX = (80, 30), (1600, 700)
+# Taskbar docking: gap to the notification area, and the spot used when it is not found.
+DOCK_GAP = 6
+DOCK_FALLBACK_OFF = 170
+# Smallest size the native window may ever take (both designs set their own size).
+WINDOW_MIN = COMPACT_MIN
 
 
 def _ncols(columns: int) -> int:
@@ -91,6 +102,31 @@ def load_widget_pos() -> tuple[int, int] | None:
     raw = load_widget_state()
     try:
         return int(raw["x"]), int(raw["y"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _clamp_compact(w: float, h: float) -> tuple[int, int]:
+    return (
+        int(max(COMPACT_MIN[0], min(COMPACT_MAX[0], round(w)))),
+        int(max(COMPACT_MIN[1], min(COMPACT_MAX[1], round(h)))),
+    )
+
+
+def load_compact_size() -> tuple[int, int] | None:
+    """Last measured size of the compact bar (logical px), so it reopens at the same spot."""
+    raw = load_widget_state()
+    try:
+        w, h = float(raw["compact_w"]), float(raw["compact_h"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return _clamp_compact(w, h)
+
+
+def load_dock_offset() -> float | None:
+    """Docked bar: distance of its right edge from the taskbar's right edge (logical px)."""
+    try:
+        return max(0.0, float(load_widget_state()["dock_off"]))
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -165,6 +201,15 @@ class QuotaApi:
     def widget_set_bounds(self, x: float, y: float, width: float, height: float) -> None:
         self._app.set_widget_bounds(x, y, width, height)
 
+    def widget_fit_content(self, width: float, height: float, expanded: bool = False) -> None:
+        self._app.fit_widget_content(float(width), float(height), bool(expanded))
+
+    def widget_dock_info(self) -> dict[str, Any]:
+        return self._app.dock_info()
+
+    def widget_dock_drag(self, dx: float, done: bool = False) -> None:
+        self._app.dock_drag(float(dx), bool(done))
+
     def widget_hot_rect(self, x: float, y: float, width: float, height: float) -> None:
         self._app.set_pass_button_rect(x, y, width, height)
 
@@ -186,6 +231,17 @@ class QuotaMonitorApp:
         self._widget_ready = threading.Event()
         self._widget_cols = 3
         self._widget_col_w, self._widget_h = load_widget_size()
+        self._widget_style = load_config()["widget"]["style"]   # "tank" | "compact"
+        self._compact_size = load_compact_size()   # bar without its detail card
+        self._compact_expanded = False             # detail card open (window taller)
+        self._dock_pref = bool(load_config()["widget"]["dock"])
+        self._dock_applied = self._docked
+        self._dock_off = load_dock_offset()        # None = next to the notification area
+        self._dock_drag_off0: float | None = None
+        self._dock_tb_h = 48.0                     # taskbar thickness (logical px)
+        self._dock_bg: str | None = None           # sampled taskbar colour
+        self._dock_hidden = False                  # hidden for a fullscreen app
+        self._dock_thread: threading.Thread | None = None
         self._mode = "tray" if start_hidden else "main"   # "main" | "widget" | "tray"
         self._tray: TrayController | None = None
         self._lock = threading.Lock()
@@ -457,7 +513,12 @@ class QuotaMonitorApp:
             except Exception:
                 pass
             self.apply_widget_look()
+            if self._docked:
+                self._dock_hidden = False
+                self._place_docked()
         self._set_mode("widget")
+        if self._docked:
+            self._start_dock_watch()
 
     def hide_all(self) -> None:
         """Everything into the tray."""
@@ -476,21 +537,31 @@ class QuotaMonitorApp:
             except Exception:
                 pass
 
+    def _widget_url(self) -> str:
+        return (UI_WIDGET_COMPACT if self._widget_style == "compact" else UI_WIDGET).as_uri()
+
+    def _widget_geometry(self) -> tuple[int, int]:
+        """Window size (logical px) for the current design."""
+        if self._widget_style == "compact":
+            if self._compact_size is not None:
+                return self._compact_size
+            return COMPACT_BASE_W + self._widget_cols * COMPACT_COL_W, COMPACT_H
+        return widget_width(self._widget_cols, self._widget_col_w), self._widget_h
+
     def _create_widget(self) -> None:
         cfg = load_config()
         self._widget_cols = max(1, sum(1 for pid in PROVIDER_IDS if is_enabled(cfg, pid)))
-        width = widget_width(self._widget_cols, self._widget_col_w)
-        height = self._widget_h
+        width, height = self._widget_geometry()
         main_hwnd = winutil.hwnd_of(self._window) if self._window is not None else None
         x, y = winutil.bottom_right_logical(width, height, main_hwnd)
 
         widget = webview.create_window(
             title="QuotaTank Widget",
-            url=UI_WIDGET.as_uri(),
+            url=self._widget_url(),
             js_api=QuotaApi(self),
             width=width,
             height=height,
-            min_size=(WIDGET_MIN_W, WIDGET_MIN_H),
+            min_size=WINDOW_MIN,
             x=x,
             y=y,
             resizable=False,
@@ -504,10 +575,12 @@ class QuotaMonitorApp:
         def on_shown() -> None:
             hwnd = winutil.hwnd_of(widget)
             if hwnd:
-                winutil.dock_widget(
-                    hwnd, widget_width(self._widget_cols, self._widget_col_w), self._widget_h,
-                    main_hwnd, pos=self._widget_pos,
-                )
+                w, h = self._widget_geometry()
+                winutil.dock_widget(hwnd, w, h, main_hwnd, pos=self._widget_pos)
+                if self._docked:
+                    winutil.set_square_corners(hwnd, True)
+                    self._place_docked()
+                    self._start_dock_watch()
                 self.apply_widget_look()
 
         def on_loaded() -> None:
@@ -602,6 +675,8 @@ class QuotaMonitorApp:
 
     def apply_settings(self, cfg: dict[str, Any]) -> None:
         self.apply_widget_look(cfg)
+        self.apply_widget_style(cfg["widget"]["style"])
+        self.apply_widget_dock(bool(cfg["widget"]["dock"]))
         self._apply_hotkey(cfg)
         if self._tray is not None:
             self._tray.refresh_menu()
@@ -629,9 +704,252 @@ class QuotaMonitorApp:
     def hotkey_ok(self) -> bool:
         return self._hotkey is not None and self._hotkey.ok
 
+    # ------------------------------------------------------------ widget design
+
+    def is_compact_widget(self) -> bool:
+        return self._widget_style == "compact"
+
+    def toggle_widget_style(self) -> None:
+        """Tray menu: switch between the tank and the compact design."""
+        cfg = load_config()
+        cfg["widget"]["style"] = "tank" if cfg["widget"]["style"] == "compact" else "compact"
+        saved = save_config(cfg)
+        self.apply_widget_style(saved["widget"]["style"])
+
+    def apply_widget_style(self, style: str) -> None:
+        """Swap the widget's page in place (same window, same spot) when the design changes."""
+        if style == self._widget_style:
+            return
+        self._widget_style = style
+        self._compact_expanded = False
+        if self._tray is not None:
+            self._tray.refresh_menu()
+        if self._widget is None:
+            return   # created with the right page when first shown
+        cfg = load_config()
+        self._widget_cols = max(1, sum(1 for pid in PROVIDER_IDS if is_enabled(cfg, pid)))
+        # The new page fetches the dashboard itself once loaded (on_loaded sets ready again).
+        self._widget_ready.clear()
+        hwnd = winutil.hwnd_of(self._widget)
+        if hwnd:
+            w, h = self._widget_geometry()
+            winutil.resize_keep_bottom_right(hwnd, w, h)
+        try:
+            self._widget.load_url(self._widget_url())
+        except Exception:
+            self._widget_ready.set()   # old page stays: keep feeding it
+        self._sync_dock()
+
+    def fit_widget_content(self, width: float, height: float, expanded: bool) -> None:
+        """Compact design: the page measured itself; give the window exactly that size.
+
+        The bottom edge stays put, so the detail card grows the window upwards and the
+        bar itself does not move.
+        """
+        if self._widget is None or self._widget_style != "compact":
+            return
+        w, h = _clamp_compact(width, height)
+        self._compact_expanded = expanded
+        if self._docked:
+            self._place_docked(w, h)
+            return
+        hwnd = winutil.hwnd_of(self._widget)
+        if hwnd:
+            winutil.resize_keep_bottom_right(hwnd, w, h)
+        if not expanded and (w, h) != self._compact_size:
+            self._compact_size = (w, h)
+            self._save_widget_state()
+
+    # ------------------------------------------------------------ taskbar docking
+
+    @property
+    def _docked(self) -> bool:
+        return self._widget_style == "compact" and self._dock_pref
+
+    def toggle_widget_dock(self) -> None:
+        """Tray menu: put the bar on the taskbar (switches to the compact design) or take it off."""
+        cfg = load_config()
+        on = not self._docked
+        cfg["widget"]["dock"] = on
+        if on:
+            cfg["widget"]["style"] = "compact"
+        saved = save_config(cfg)
+        self.apply_widget_style(saved["widget"]["style"])
+        self.apply_widget_dock(bool(saved["widget"]["dock"]))
+
+    def apply_widget_dock(self, on: bool) -> None:
+        self._dock_pref = bool(on)
+        self._sync_dock()
+
+    def _sync_dock(self) -> None:
+        """Move the widget onto / off the taskbar when the docked state changed."""
+        docked = self._docked
+        if docked == self._dock_applied:
+            return
+        self._dock_applied = docked
+        self._compact_expanded = False
+        if self._tray is not None:
+            self._tray.refresh_menu()
+        if self._widget is None:
+            return
+        hwnd = winutil.hwnd_of(self._widget)
+        if not hwnd:
+            return
+        winutil.set_square_corners(hwnd, docked)
+        if docked:
+            self._place_docked()
+            if self._mode == "widget":
+                self._start_dock_watch()
+        else:
+            if self._dock_hidden and self._mode == "widget":
+                winutil.show_no_activate(hwnd, True)
+            self._dock_hidden = False
+            w, h = self._widget_geometry()
+            s = winutil.scale_of(hwnd)
+            pos = self._widget_pos
+            if pos is not None:
+                winutil.set_rect(hwnd, pos[0], pos[1], int(w * s), int(h * s))
+            else:
+                winutil.place_bottom_right(hwnd, w, h, hwnd)
+        self._push_dock_info()
+
+    def dock_info(self) -> dict[str, Any]:
+        if self._docked and self._widget is not None:
+            hwnd = winutil.hwnd_of(self._widget)
+            tb = winutil.taskbar_for(hwnd)
+            rect = winutil.window_rect(tb) if tb else None
+            if rect and (rect[2] - rect[0]) > (rect[3] - rect[1]):
+                self._dock_tb_h = (rect[3] - rect[1]) / winutil.scale_of(tb)
+                self._sample_dock_bg(hwnd, rect)
+        return {"docked": self._docked, "height": round(self._dock_tb_h), "bg": self._dock_bg}
+
+    def _sample_dock_bg(self, hwnd: int | None, tb_rect: tuple[int, int, int, int]) -> bool:
+        """Read the taskbar colour beside the bar; True if it changed."""
+        own = winutil.window_rect(hwnd) if hwnd else None
+        try:
+            color = winutil.taskbar_color(tb_rect, (own[0], own[2]) if own else None)
+        except Exception:
+            color = None
+        if color and color != self._dock_bg:
+            self._dock_bg = color
+            return True
+        return False
+
+    def _push_dock_info(self) -> None:
+        if self._widget is None or not self._widget_ready.is_set():
+            return   # a page still loading asks for it itself
+        info = json.dumps(self.dock_info())
+        self._js.send(self._widget, "dock", f"window.__setDock && window.__setDock({info});")
+
+    def _place_docked(self, width: float | None = None, height: float | None = None) -> bool:
+        """Put the bar on the taskbar: bottom-aligned, right edge `_dock_off` from the taskbar's end."""
+        if self._widget is None:
+            return False
+        hwnd = winutil.hwnd_of(self._widget)
+        if not hwnd:
+            return False
+        tb = winutil.taskbar_for(hwnd)
+        tbr = winutil.window_rect(tb) if tb else None
+        if not tbr or (tbr[2] - tbr[0]) <= (tbr[3] - tbr[1]):
+            return False   # no taskbar, or a vertical one: stay where it is
+        s = winutil.scale_of(hwnd)
+        cur = winutil.window_rect(hwnd)
+        if width is None or height is None:
+            if cur is None:
+                return False
+            w, h = cur[2] - cur[0], cur[3] - cur[1]
+        else:
+            w, h = int(round(width * s)), int(round(height * s))
+        self._dock_tb_h = (tbr[3] - tbr[1]) / s
+        left, right, bottom = tbr[0], tbr[2], tbr[3]
+        if winutil.taskbar_autohide():
+            mon = winutil.monitor_rect(tb)
+            if mon:
+                bottom = mon[3]   # where the taskbar appears, not where it hides
+        if self._dock_off is None:
+            tray = winutil.tray_area_left(tb)
+            off = (right - tray) / s + DOCK_GAP if tray else DOCK_FALLBACK_OFF
+        else:
+            off = self._dock_off
+        x = int(round(right - off * s)) - w
+        x = max(left, min(right - w, x))
+        if self._dock_off is not None or self._dock_drag_off0 is not None:
+            self._dock_off = (right - (x + w)) / s   # keep what the clamp allowed
+        winutil.set_rect(hwnd, x, bottom - h, w, h)
+        return True
+
+    def dock_drag(self, dx: float, done: bool) -> None:
+        """Horizontal drag along the taskbar (dx: logical px since the press)."""
+        if not self._docked:
+            return
+        if self._dock_drag_off0 is None:
+            if self._dock_off is None:
+                hwnd = winutil.hwnd_of(self._widget) if self._widget else None
+                tb = winutil.taskbar_for(hwnd) if hwnd else None
+                tbr = winutil.window_rect(tb) if tb else None
+                cur = winutil.window_rect(hwnd) if hwnd else None
+                if not (tbr and cur):
+                    return
+                self._dock_off = (tbr[2] - cur[2]) / winutil.scale_of(hwnd)
+            self._dock_drag_off0 = self._dock_off
+        self._dock_off = max(0.0, self._dock_drag_off0 - dx)
+        self._place_docked()
+        if done:
+            self._dock_drag_off0 = None
+            self._save_widget_state()
+
+    def _start_dock_watch(self) -> None:
+        if self._dock_thread is not None and self._dock_thread.is_alive():
+            return
+        self._dock_thread = threading.Thread(target=self._dock_watch, daemon=True, name="dock-watch")
+        self._dock_thread.start()
+
+    def _dock_watch(self) -> None:
+        """Keep the docked bar on top of the taskbar, out of the way of fullscreen apps.
+
+        The taskbar raises itself whenever it is clicked; checking the z-order a few
+        times a second is a handful of cheap Win32 calls.
+        """
+        tick = 0
+        last_tb: tuple[int, int, int, int] | None = None
+        while not self._stop_event.wait(0.15):
+            if not self._docked or self._quitting:
+                break
+            if self._widget is None or self._mode != "widget":
+                continue
+            hwnd = winutil.hwnd_of(self._widget)
+            tb = winutil.taskbar_for(hwnd) if hwnd else None
+            if not hwnd or not tb:
+                continue
+            try:
+                mon = winutil.monitor_rect(tb)
+                full = bool(mon) and winutil.fullscreen_foreground(mon)
+                if full != self._dock_hidden:
+                    self._dock_hidden = full
+                    winutil.show_no_activate(hwnd, not full)
+                if full:
+                    continue
+                if winutil.is_covered_by(hwnd, tb):
+                    winutil.raise_topmost(hwnd)
+                tick += 1
+                if tick % 13 == 0:   # ~2 s: resolution / taskbar size / explorer restart
+                    tbr = winutil.window_rect(tb)
+                    if tbr != last_tb:
+                        old_h = self._dock_tb_h
+                        last_tb = tbr
+                        self._place_docked()
+                        if round(self._dock_tb_h) != round(old_h):
+                            self._push_dock_info()
+                if tick % 40 == 0 and last_tb:   # ~6 s: taskbar tint follows the wallpaper
+                    if self._sample_dock_bg(hwnd, last_tb):
+                        self._push_dock_info()
+            except Exception:
+                pass
+        self._dock_thread = None
+
     def fit_widget(self, columns: int) -> None:
         columns = max(1, min(3, columns))
-        if self._widget is None or columns == self._widget_cols:
+        if self._widget is None or columns == self._widget_cols or self._widget_style != "tank":
             return
         self._widget_cols = columns
         hwnd = winutil.hwnd_of(self._widget)
@@ -668,8 +986,8 @@ class QuotaMonitorApp:
         self._pos_timer.start()
 
     def _remember_widget_pos(self) -> None:
-        if self._widget is None or self._quitting:
-            return
+        if self._widget is None or self._quitting or self._compact_expanded or self._docked:
+            return   # taller window with the card open / taskbar spot: not the floating spot
         hwnd = winutil.hwnd_of(self._widget)
         rect = winutil.window_rect(hwnd) if hwnd else None
         if rect is None:
@@ -680,9 +998,13 @@ class QuotaMonitorApp:
             self._save_widget_state()
 
     def _save_widget_state(self) -> None:
-        state = {"col_w": round(self._widget_col_w, 1), "h": self._widget_h}
+        state: dict[str, Any] = {"col_w": round(self._widget_col_w, 1), "h": self._widget_h}
+        if self._compact_size is not None:
+            state["compact_w"], state["compact_h"] = self._compact_size
         if self._widget_pos is not None:
             state["x"], state["y"] = self._widget_pos
+        if self._dock_off is not None:
+            state["dock_off"] = round(self._dock_off, 1)
         try:
             write_json_atomic(_widget_size_path(), state)
         except Exception:
@@ -807,6 +1129,10 @@ class QuotaMonitorApp:
             on_quit=self.quit,
             on_toggle_click_through=self.toggle_click_through,
             is_click_through=self.is_click_through,
+            on_toggle_compact=self.toggle_widget_style,
+            is_compact=self.is_compact_widget,
+            on_toggle_dock=self.toggle_widget_dock,
+            is_docked=lambda: self._docked,
         )
 
         def on_started() -> None:

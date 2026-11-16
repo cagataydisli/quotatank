@@ -37,8 +37,11 @@ DEFAULT_UI_CFG: dict[str, bool] = {
 #   reset:     tell when a quota that was running low has been renewed
 DEFAULT_ALERTS_CFG: dict[str, Any] = {"enabled": True, "threshold": 20, "critical": 10, "reset": True}
 
-# Compact widget look: opacity in %, click_through lets the mouse pass to what is below.
-DEFAULT_WIDGET_CFG: dict[str, Any] = {"opacity": 100, "click_through": False}
+# Compact widget look: opacity in %, click_through lets the mouse pass to what is below,
+# style picks the design: "tank" (vertical liquid tanks) or "compact" (one horizontal bar).
+WIDGET_STYLES = ("tank", "compact")
+# dock: the compact bar sits on the taskbar, as thick as the taskbar (compact style only).
+DEFAULT_WIDGET_CFG: dict[str, Any] = {"opacity": 100, "click_through": False, "style": "tank", "dock": False}
 
 # System integration. hotkey: "ctrl+shift+q" style; start_mode: what an autostart shows.
 DEFAULT_SYSTEM_CFG: dict[str, Any] = {"hotkey_enabled": True, "hotkey": "ctrl+shift+q", "start_mode": "widget"}
@@ -98,6 +101,8 @@ def normalize_config(raw: Any) -> dict[str, Any]:
     widget = {
         "opacity": _int_in(raw_widget.get("opacity"), DEFAULT_WIDGET_CFG["opacity"], 30, 100),
         "click_through": bool(raw_widget.get("click_through", DEFAULT_WIDGET_CFG["click_through"])),
+        "style": raw_widget["style"] if raw_widget.get("style") in WIDGET_STYLES else DEFAULT_WIDGET_CFG["style"],
+        "dock": bool(raw_widget.get("dock", DEFAULT_WIDGET_CFG["dock"])),
     }
 
     raw_sys = raw.get("system") if isinstance(raw.get("system"), dict) else {}
