@@ -45,6 +45,10 @@ CODEX_ACTIVITY_GAP_VISIBLE = 20.0
 CODEX_ACTIVITY_GAP_HIDDEN = 60.0
 CODEX_MAX_AGE_VISIBLE = 600.0
 CODEX_MAX_AGE_HIDDEN = 1800.0
+# Claude limits are shared with claude.ai / the desktop app, so the live usage API is
+# re-read periodically (one small HTTPS request) and right after a window resets.
+CLAUDE_MAX_AGE_VISIBLE = 120.0
+CLAUDE_MAX_AGE_HIDDEN = 600.0
 
 # Compact widget geometry (logical px): one column per tracked tool.
 WIDGET_COL_W = 92
@@ -189,6 +193,7 @@ class QuotaMonitorApp:
         self._quitting = False
         self._raw: dict[str, dict[str, Any]] = {}   # provider id -> raw payload
         self._last_codex_poll = 0.0
+        self._last_claude_poll = 0.0
         self._codex_activity = codex_activity_mtime()
         self._collecting: set[str] = set()
         self._last_mtimes: dict[str, float] = {}
@@ -240,6 +245,8 @@ class QuotaMonitorApp:
                 self._raw.update(fresh)
                 if "codex" in ids:
                     self._last_codex_poll = time.time()
+                if "claude" in ids:
+                    self._last_claude_poll = time.time()
                 if ids:
                     self._last_mtimes = get_snapshot_mtimes(cfg)
         with self._lock:
@@ -351,11 +358,23 @@ class QuotaMonitorApp:
                 # Codex: only when it can have changed (see CODEX_* above).
                 if is_enabled(cfg, "codex") and self._codex_due():
                     due.append("codex")
+                if "claude" not in due and is_enabled(cfg, "claude") and self._claude_due():
+                    due.append("claude")
 
                 if due:
                     self._push_to_ui(self.refresh(due))
             except Exception:
                 pass
+
+    def _claude_due(self) -> bool:
+        now = time.time()
+        since = now - self._last_claude_poll
+        windows = (self._raw.get("claude") or {}).get("windows") or []
+        for w in windows:
+            reset = w.get("resets_at")
+            if isinstance(reset, (int, float)) and self._last_claude_poll < reset + 5 <= now:
+                return True
+        return since >= (CLAUDE_MAX_AGE_VISIBLE if self._visible else CLAUDE_MAX_AGE_HIDDEN)
 
     def _codex_due(self) -> bool:
         now = time.time()

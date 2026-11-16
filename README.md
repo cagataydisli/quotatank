@@ -23,7 +23,7 @@
 - **Kısayol:** `Ctrl + Shift + Q` ile küçük pencere her yerden açılır/kapanır (Ayarlar'dan değiştirilebilir).
 - **Windows ile başlama** (isteğe bağlı).
 
-Ekstra token harcamaz ve hiçbir veri bilgisayarından dışarı çıkmaz. Kota bilgisi araçların kendi yerel çıktılarından okunur.
+Ekstra token harcamaz. Kota bilgisi araçların kendi yerel çıktılarından okunur; tek istisna Claude'dur: 5 saatlik ve haftalık limit claude.ai ve masaüstü uygulamasıyla ortak olduğundan, Claude Code'un `/usage` komutunun kullandığı Anthropic uç noktası Claude Code'un kendi oturum anahtarıyla birkaç dakikada bir sorgulanır (yalnızca `api.anthropic.com`'a gider).
 
 ## Gereksinimler
 
@@ -45,7 +45,7 @@ Kurulum Python ortamını hazırlar, gerekli paketleri yükler, Claude Code / An
 
 | Araç | Veri kaynağı |
 | --- | --- |
-| **Claude Code** | `~/.claude/settings.json` içindeki `statusLine` köprüsü (`five_hour`, `seven_day` limitleri) ve `~/.claude/stats-cache.json` |
+| **Claude Code** | `api.anthropic.com/api/oauth/usage` (canlı, `/usage` ile aynı kaynak; `~/.claude/.credentials.json` token'ı ile), yedek olarak `~/.claude/settings.json` içindeki `statusLine` köprüsü (`five_hour`, `seven_day` limitleri) ve `~/.claude/stats-cache.json` |
 | **Codex CLI** | `codex app-server` üzerinden yerel JSON-RPC (`account/rateLimits/read`) |
 | **Antigravity CLI** | `~/.gemini/antigravity-cli/settings.json` içindeki `statusLine` köprüsü |
 

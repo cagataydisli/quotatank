@@ -79,13 +79,49 @@ class TestCollectors(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            with patch("app.collectors.claude.get_snapshot_path", return_value=snap_file):
+            with patch("app.collectors.claude.get_snapshot_path", return_value=snap_file), patch(
+                "app.collectors.claude.fetch_live_usage", return_value=None
+            ):
                 res = claude.collect_claude()
 
             self.assertEqual(res["active_model"], "Claude Sonnet 5.5")
             self.assertEqual(len(res["windows"]), 2)
             self.assertEqual(res["windows"][0]["remaining_percent"], 66.0)
             self.assertEqual(res["windows"][1]["remaining_percent"], 88.0)
+
+
+    def test_claude_live_usage_overrides_stale_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            snap_file = Path(td) / "claude.json"
+            snap_file.write_text(
+                json.dumps(
+                    {
+                        "captured_at_epoch": 1794580000,
+                        "rate_limits": {
+                            "five_hour": {"used_percentage": 0.0, "resets_at": 1794590000},
+                            "seven_day": {"used_percentage": 29.0, "resets_at": 1795176000},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            api = {
+                "five_hour": {"utilization": 15.0, "resets_at": "2026-11-16T14:00:00.45+00:00"},
+                "seven_day": {"utilization": 32.0, "resets_at": "2026-11-20T12:00:00+00:00"},
+                "seven_day_opus": None,
+                "extra_usage": {"is_enabled": False, "utilization": None},
+            }
+            live = {"captured_at_epoch": 1794836000, "rate_limits": claude._usage_to_rate_limits(api)}
+            self.assertEqual(set(live["rate_limits"]), {"five_hour", "seven_day"})
+            with patch("app.collectors.claude.get_snapshot_path", return_value=snap_file), patch(
+                "app.collectors.claude.fetch_live_usage", return_value=live
+            ):
+                res = claude.collect_claude()
+
+            self.assertEqual(res["status_label"].endswith("(API)"), True)
+            self.assertEqual(res["windows"][0]["remaining_percent"], 85.0)
+            self.assertEqual(res["windows"][0]["resets_at"], 1794837600)
+            self.assertEqual(res["windows"][1]["remaining_percent"], 68.0)
 
 
 class TestConfigAndFiltering(unittest.TestCase):

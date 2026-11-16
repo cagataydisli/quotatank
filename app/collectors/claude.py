@@ -1,12 +1,25 @@
-"""Claude Code CLI collector via passive statusLine snapshots and stats-cache."""
+"""Claude Code CLI collector: live usage API, statusLine snapshots and stats-cache.
+
+The 5h / weekly limits are shared with claude.ai and the desktop app, so the passive
+statusLine snapshot misses usage made outside the terminal. The same endpoint Claude
+Code's /usage command reads is polled (throttled) with the CLI's own OAuth token; the
+statusLine snapshot remains the fallback when that is not possible.
+"""
 
 from __future__ import annotations
 
+import json
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
-from app.paths import get_snapshot_path, read_json_safe
+from app.paths import get_snapshot_path, parse_iso_to_epoch, read_json_safe, write_json_atomic
+
+CREDENTIALS = Path.home() / ".claude" / ".credentials.json"
+USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+LIVE_MIN_INTERVAL_SEC = 60
+LIVE_TIMEOUT_SEC = 8
 
 
 RATE_LIMIT_META = {
@@ -41,6 +54,60 @@ def _normalize_rate_limit(
     }
 
 
+def _usage_to_rate_limits(data: dict[str, Any]) -> dict[str, Any]:
+    """/api/oauth/usage payload -> statusLine-style {key: {used_percentage, resets_at}}."""
+    out: dict[str, Any] = {}
+    for key, val in data.items():
+        if not isinstance(val, dict) or not isinstance(val.get("resets_at"), str):
+            continue
+        used = val.get("utilization")
+        if not isinstance(used, (int, float)):
+            continue
+        out[key] = {"used_percentage": float(used), "resets_at": parse_iso_to_epoch(val["resets_at"])}
+    return out
+
+
+def fetch_live_usage(min_interval: float = LIVE_MIN_INTERVAL_SEC) -> dict[str, Any] | None:
+    """Live limits from Anthropic, cached on disk; None when never fetched successfully.
+
+    Never refreshes the OAuth token itself (that would rotate Claude Code's refresh
+    token); an expired token simply leaves the last cached value / statusLine in place.
+    """
+    path = get_snapshot_path("claude_api")
+    cached = read_json_safe(path)
+    now = time.time()
+    if cached and now - float(cached.get("captured_at_epoch") or 0) < min_interval:
+        return cached
+    try:
+        oauth = (read_json_safe(CREDENTIALS) or {}).get("claudeAiOauth") or {}
+        token = oauth.get("accessToken")
+        expires_ms = oauth.get("expiresAt")
+        if not token or (isinstance(expires_ms, (int, float)) and expires_ms / 1000 <= now + 30):
+            return cached
+        req = urllib.request.Request(
+            USAGE_URL,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "anthropic-beta": "oauth-2025-04-20",
+                "User-Agent": "QuotaTank",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=LIVE_TIMEOUT_SEC) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        rate_limits = _usage_to_rate_limits(data if isinstance(data, dict) else {})
+        if not rate_limits:
+            return cached
+        live = {
+            "captured_at_epoch": int(now),
+            "plan": oauth.get("subscriptionType"),
+            "rate_limits": rate_limits,
+        }
+        write_json_atomic(path, live)
+        return live
+    except Exception:
+        return cached
+
+
 def collect_claude() -> dict[str, Any]:
     snap = read_json_safe(get_snapshot_path("claude"))
     stats = read_json_safe(Path.home() / ".claude" / "stats-cache.json") or {}
@@ -69,8 +136,22 @@ def collect_claude() -> dict[str, Any]:
     captured_at = None
     active_model = settings.get("model")
 
+    source = "statusLine"
+    rl = None
     if snap and isinstance(snap.get("rate_limits"), dict):
         rl = snap["rate_limits"]
+        captured_at = snap.get("rate_limits_captured_at_epoch") or snap.get(
+            "captured_at_epoch"
+        )
+    live = fetch_live_usage()
+    if live and isinstance(live.get("rate_limits"), dict) and (
+        rl is None or int(live.get("captured_at_epoch") or 0) >= int(captured_at or 0)
+    ):
+        rl = live["rate_limits"]
+        captured_at = live.get("captured_at_epoch")
+        source = "API"
+
+    if rl:
         ordered = [k for k in RATE_LIMIT_META if k in rl] + [
             k for k in rl if k not in RATE_LIMIT_META
         ]
@@ -79,9 +160,7 @@ def collect_claude() -> dict[str, Any]:
             w = _normalize_rate_limit(label, key, rl.get(raw_key))
             if w:
                 windows.append(w)
-        captured_at = snap.get("rate_limits_captured_at_epoch") or snap.get(
-            "captured_at_epoch"
-        )
+    if snap:
         m = snap.get("model") or {}
         active_model = m.get("display_name") or m.get("id") or active_model
 
@@ -92,10 +171,10 @@ def collect_claude() -> dict[str, Any]:
         age = int(time.time()) - int(captured_at or 0)
         if age > 1800:
             status = "stale"
-            status_label = "Önbellek (statusLine)"
+            status_label = f"Önbellek ({source})"
         else:
             status = "live"
-            status_label = "Yakalandı (statusLine)"
+            status_label = "Canlı (API)" if source == "API" else "Yakalandı (statusLine)"
 
     ctx = (snap or {}).get("context_window") or {}
 
